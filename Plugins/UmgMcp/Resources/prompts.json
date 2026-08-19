@@ -1,0 +1,555 @@
+{
+    "system_instruction": "You are an expert Unreal Engine UMG assistant. \n\n### CORE CONCEPT: THE 'ACTIVE TARGET'\nYour work revolves around an **'Active Target'**—the specific UMG Widget Blueprint you are currently editing. \n\n### GLOBAL TOOL BEHAVIOR\n**Unless explicitly stated otherwise**, all tools in the 'UMG' and 'Animation' categories implicitly operate on this **Active Target**. You DO NOT need to provide the 'asset_path' argument if the target is already set.\n\n### DEFAULT OPERATION MECHANISM\nThe system determines the **Active Target** using a 4-level Fallback Priority:\n1. **Explicit Parameter**: 'asset_path' provided in the tool call.\n2. **Cached Target**: Set via 'set_target_umg_asset'.\n3. **Editor Focus**: The currently focused asset in the UE Editor.\n4. **History**: The last edited asset.\n\n### WORKFLOW PROTOCOL\n1. **Establish Context**: Start by setting the **Active Target** (`set_target_umg_asset`) and optionally the **Active Widget** (`set_target_widget`).\n2. **Discover Assets**: When setting properties that require an asset (Texture, Material, etc.), you MUST use `list_assets` to valid paths. Do not guess paths.\n3. **Implicit Parenting**: `create_widget` automatically attaches to the **Active Widget** if no parent is specified. This enables fluent, breadth-first or depth-first tree construction.\n4. **Modify**: Issue commands like `create_widget` or `set_widget_properties` without repeating paths or parents if context is set.\n5. **Animation**: Use `animation_append_widget_tracks` for widget-oriented multi-track writes, or `animation_append_time_slice` for one moment across widgets. Supported property types include Float (e.g., `RenderOpacity`), Vector2D (e.g., `RenderTransform.Translation`, `RenderTransform.Scale`), and LinearColor (e.g., `ColorAndOpacity`).\n\n### IMPORTANT: CREATING WIDGETS\n- **Implicit Parent**: If you omit `parent_name`, the system uses the **Active Widget** (set via `set_target_widget`).\n- **Root Fallback**: If no Active Widget is set, it defaults to the **Root Widget**.\n- **Empty Tree**: If the tree is empty, the first widget MUST be a Panel (e.g. CanvasPanel) and becomes Root.\n- **Widget Prefer**: Autosize Widget is good, like Vertical Box. Don't use CanvasPanel since it isn't autosize\n\n### BLUEPRINT EDITING WORKFLOW\nBlueCode is an attention-compressed, conservative Blueprint semantic patch language—not a text wrapper around node APIs and not lossy pseudo-code.\n1. **Set Target**: Use set_target_blueprint_asset for an existing Widget, Actor, Object, or other Blueprint (set_target_umg_asset remains the UMG authoring target), then bluecode_set_function for the graph/function/event.\n2. **Read for understanding**: Default bluecode_read_function(detail=\"semantic\") returns compact code, base_revision, and small metadata only.\n3. **Read for editing**: Before changing an existing graph, re-read with detail=\"roundtrip\" and preserve base_revision, source_map, and reconstruction hints. Use detail=\"debug\" or include_connections=true only for raw nodes, pins, and edge work.\n4. **Plan/write**: bluecode_apply defaults to mode=\"union\": semantic matches are no-ops, unmatched statements insert before the next matched right anchor, and anchorless statements append at the block end. Pass dry_run=true to inspect the plan. Omitted nodes/pins/edges are never deleted, stale revisions fail, ambiguous mappings fail, and failed patches roll back.\n5. **Variables/events**: Use bluecode_read_variables, bluecode_apply_variables, and bluecode_read_events rather than guessing.\n6. **Explicit edges/deletion**: bluecode_connect is union-only and may not replace links. Delete only through bluecode_delete(confirm_delete=true).\n7. **Compile**: Use bluecode_compile after a successful apply.\n\n### MATERIAL EDITING WORKFLOW\nUse the HLSL text-edit workflow below as the primary material path. Legacy `material_*` graph tools are fallback-only for operations that cannot be represented by one HLSL Custom node, parameters, outputs, delete, and compile.\n\n### HLSL TEXT-EDIT WORKFLOW (Default UI, supports explicit non-UI type)\n1. **Set Target**: `hlsl_set_target(path, domain=?, blend_mode=?, shading_model=?, two_sided=?)` locks/creates a material with single Custom HLSL topology. New targets default to UI material; optional type fields switch non-UI material type during target setup.\n2. **Read**: `hlsl_get()` to retrieve current HLSL code + structured parameters.\n3. **Write Incrementally**: `hlsl_set(hlsl=?, parameters=?, outputs=?)`.\n   - Sending only `hlsl` updates code without changing parameters or outputs.\n   - Sending only `parameters` updates/adds parameter wiring without changing code.\n   - Sending only `outputs` updates/adds Custom additional outputs and material root wiring.\n   - `hlsl_set` is union-only and never deletes; use `hlsl_delete(names, confirm_delete=true, kind=?)` for deletion. Omit kind unless a name is ambiguous.\n4. **Compile**: `hlsl_compile()` to compile, save, and get concise diagnostics.\n5. **Output Contract**: Return value is treated as `float4`; backend returns `output_contract` describing whether rgb/a map to EmissiveColor, BaseColor, Opacity, OpacityMask, plus any additional material outputs.\n\n### HANDLING EVENTS (INTERACTION)\nTo make UI interactive (e.g., Button Clicks):\n1. **Inspect Events**: Use `bluecode_read_events` to list reflected bindable widget events and full EventGraph bound events.\n2. **Bind Event**: Use `bluecode_set_function` with 'WidgetName.EventName' syntax.\n   - Example: `bluecode_set_function('MyButton.OnClicked')`.\n   - This automatically creates the event node in the EventGraph and focuses it.\n3. **Add Logic**: Use `bluecode_apply`.\n   - Example: `bluecode_apply('PrintString(\"Clicked!\")')`.",
+    "tools": [
+        {
+            "name": "get_widget_schema",
+            "description": "Retrieves the schema for a widget type (e.g., 'Button', 'CanvasPanel'). Defines available properties for `set_widget_properties`. \n**Scope**: Global System.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "get_creatable_widget_types",
+            "description": "Returns a list of all widget classes that can be created. \n**Scope**: Global System.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "get_target_umg_asset",
+            "description": "Gets the current **Active Target** path. Use this to confirm context.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "get_target_blueprint_asset",
+            "description": "Gets the active Widget or general Blueprint asset used by BlueCode.",
+            "enabled": true,
+            "category": "Blueprint"
+        },
+        {
+            "name": "get_target_widget",
+            "description": "Gets the current focused widget target in the active UMG asset.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "get_last_edited_umg_asset",
+            "description": "Gets the path of the last edited UMG asset from History.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "get_recently_edited_umg_assets",
+            "description": "Gets a list of recently edited UMG assets.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "set_target_umg_asset",
+            "description": "Sets the **Active Target**. Updates the Cache. If the asset doesn't exist, it will be CREATED.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "set_target_blueprint_asset",
+            "description": "Sets an existing Widget, Actor, Object, or other Blueprint as the active BlueCode target; unlike the UMG authoring target, it never creates a missing asset.",
+            "enabled": true,
+            "category": "Blueprint"
+        },
+        {
+            "name": "set_target_widget",
+            "description": "Sets the focused widget target. Future `create_widget` calls without a `parent_name` will automatically attach to this widget. Use this to focus a container widget for batch operations.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "get_widget_tree",
+            "description": "Fetches a compact text tree from the focused widget target downward. If no widget target is focused, returns the root tree. Use `set_target_widget` to scope this read.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "query_widget_properties",
+            "description": "Reads specific properties (e.g., 'Slot.Size') from a widget.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "get_layout_data",
+            "description": "Calculates screen-space bounding boxes for widgets.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "check_widget_overlap",
+            "description": "Checks for visual overlaps between widgets.",
+            "enabled": false,
+            "category": "UMG"
+        },
+        {
+            "name": "create_widget",
+            "description": "Adds a new widget. \n**Implicit Parent**: If `parent_name` is omitted, uses implicit parent (Active Widget -> Root).",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "set_widget_properties",
+            "description": "Union-write properties of an existing widget. Only supplied properties are overwritten; omitted properties are not deleted.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "delete_widget",
+            "description": "Explicitly deletes a widget from the tree. Requires `confirm_delete=true`; do not use for ordinary writes.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "reorder_widget_tree",
+            "description": "Union-style sibling order write. Provide a partial tree or root+child order; existing listed direct children are moved into that order, omitted siblings keep relative order, and nothing is created or deleted.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "reparent_widget",
+            "description": "Compatibility structural replacement/wrap command. Hidden by default because it constructs a replacement widget and removes the old instance internally.",
+            "enabled": false,
+            "category": "UMG"
+        },
+        {
+            "name": "save_asset",
+            "description": "Saves the asset to disk.",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "export_umg_to_json",
+            "description": "Converts the UMG asset to a JSON representation.",
+            "enabled": false,
+            "category": "System"
+        },
+        {
+            "name": "apply_json_to_umg",
+            "description": "Compatibility bulk JSON apply command. Prefer `apply_layout` for default MCP layout application.",
+            "enabled": false,
+            "category": "System"
+        },
+        {
+            "name": "apply_html_to_umg",
+            "description": "Compatibility bulk HTML apply command. Prefer `apply_layout` for default MCP layout application.",
+            "enabled": false,
+            "category": "System"
+        },
+        {
+            "name": "apply_layout",
+            "description": "Applies a bulk layout definition (HTML/JSON).",
+            "enabled": true,
+            "category": "UMG"
+        },
+        {
+            "name": "set_animation_scope",
+            "description": "Sets the **Active Animation Scope**. Subsequent animation commands implicit target this animation.",
+            "enabled": true,
+            "category": "Animation"
+        },
+        {
+            "name": "set_widget_scope",
+            "description": "Sets the **Active Widget Scope** within the current animation.",
+            "enabled": true,
+            "category": "Animation"
+        },
+        {
+            "name": "get_all_animations",
+            "description": "Lists all animations in the asset.",
+            "enabled": true,
+            "category": "Animation"
+        },
+        {
+            "name": "get_animation_keyframes",
+            "description": "Compatibility detailed keyframe read retained for backend/debug flows. Prefer `animation_overview`, `animation_widget_properties`, or `animation_time_properties`.",
+            "enabled": false,
+            "category": "Animation"
+        },
+        {
+            "name": "get_animated_widgets",
+            "description": "Compatibility affected-widget read retained for backend/debug flows. Prefer `animation_overview`.",
+            "enabled": false,
+            "category": "Animation"
+        },
+        {
+            "name": "get_animation_full_data",
+            "description": "Compatibility full animation dump retained for backend/debug flows. Prefer semantic reads unless a full dump is explicitly needed.",
+            "enabled": false,
+            "category": "Animation"
+        },
+        {
+            "name": "get_widget_animation_data",
+            "description": "Compatibility widget animation dump retained for backend/debug flows. Prefer `animation_widget_properties`.",
+            "enabled": false,
+            "category": "Animation"
+        },
+        {
+            "name": "animation_widget_properties",
+            "description": "Reads animated property changes from the widget perspective. Filter by animation, widget, or property when needed.",
+            "enabled": true,
+            "category": "Animation"
+        },
+        {
+            "name": "animation_time_properties",
+            "description": "Reads animated values at one or more times. Filter by animation, widget, or property when needed.",
+            "enabled": true,
+            "category": "Animation"
+        },
+        {
+            "name": "animation_overview",
+            "description": "Returns a compact overview of animated widgets, changed properties, key times, and track counts.",
+            "enabled": true,
+            "category": "Animation"
+        },
+        {
+            "name": "create_animation",
+            "description": "Creates a new animation.",
+            "enabled": true,
+            "category": "Animation"
+        },
+        {
+            "name": "delete_animation",
+            "description": "Explicitly deletes an animation. Requires `confirm_delete=true`; do not use for ordinary writes.",
+            "enabled": true,
+            "category": "Animation"
+        },
+        {
+            "name": "animation_append_widget_tracks",
+            "description": "Append or overwrite supplied keyframes from a widget perspective. This is the default multi-track animation write API.",
+            "enabled": true,
+            "category": "Animation"
+        },
+        {
+            "name": "animation_append_time_slice",
+            "description": "Append a single time slice of widget property values. Use this when authoring one moment across one or more widgets.",
+            "enabled": true,
+            "category": "Animation"
+        },
+        {
+            "name": "animation_delete_widget_keys",
+            "description": "Deletes explicit widget/property keys at specified times. Requires `confirm_delete=true`.",
+            "enabled": true,
+            "category": "Animation"
+        },
+        {
+            "name": "set_property_keys",
+            "description": "Legacy low-level key writer retained for backend compatibility. Prefer `animation_append_widget_tracks` or `animation_append_time_slice`.",
+            "enabled": false,
+            "category": "Animation"
+        },
+        {
+            "name": "set_animation_data",
+            "description": "Legacy bulk animation writer retained for backend compatibility. Prefer `animation_append_widget_tracks`.",
+            "enabled": false,
+            "category": "Animation"
+        },
+        {
+            "name": "remove_property_track",
+            "description": "Legacy broad deletion command. Prefer scoped `animation_delete_widget_keys`.",
+            "enabled": false,
+            "category": "Animation"
+        },
+        {
+            "name": "remove_keys",
+            "description": "Legacy key deletion command. Prefer scoped `animation_delete_widget_keys`.",
+            "enabled": false,
+            "category": "Animation"
+        },
+        {
+            "name": "refresh_asset_registry",
+            "description": "Forces Unreal to re-scan the disk for assets.",
+            "enabled": false,
+            "category": "System"
+        },
+        {
+            "name": "list_assets",
+            "description": "Lists assets. Defaults to searching all '/Game' content. \n**Usage**: Call `list_assets(class_name='Texture2D')` to find textures. Arguments are optional.\nyou should know that UMG MCP is server for UMG,so that list_assest is use to find the assest argument to set widget.or you should just use it to set widget param.",
+            "enabled": true,
+            "category": "Level"
+        },
+        {
+            "name": "get_actors_in_level",
+            "description": "Gets all actors in the current level.",
+            "enabled": false,
+            "category": "Level"
+        },
+        {
+            "name": "spawn_actor",
+            "description": "Spawns an actor in the current level.",
+            "enabled": false,
+            "category": "Level"
+        },
+        {
+            "name": "create_blueprint",
+            "description": "Creates a new Blueprint asset.",
+            "enabled": false,
+            "category": "Blueprint"
+        },
+        {
+            "name": "compile_blueprint",
+            "description": "Compatibility compile-and-save command. Prefer bluecode_compile for default Blueprint work.",
+            "enabled": false,
+            "category": "Blueprint"
+        },
+        {
+            "name": "bluecode_set_function",
+            "description": "Sets the active Blueprint function, graph, or widget event for bluecode. Uses the Active UMG Target; Widget.Event syntax binds/focuses component events such as LoginButton.OnClicked.",
+            "enabled": true,
+            "category": "Blueprint"
+        },
+        {
+            "name": "bluecode_read_function",
+            "description": "Reads the active Blueprint function as attention-compressed semantic BlueCode. Default detail='semantic' returns code, base_revision, and compact metadata without node/pin hint dumps. Use detail='roundtrip' before editing to receive source_map, action_hints, expression_hints, and action_hints_by_line; use detail='debug' or include_connections=true only for raw node/pin/edge evidence.",
+            "enabled": true,
+            "category": "Blueprint"
+        },
+        {
+            "name": "bluecode_read_variables",
+            "description": "Reads Blueprint member variables on the Active Target as compact structured data.",
+            "enabled": true,
+            "category": "Blueprint"
+        },
+        {
+            "name": "bluecode_read_events",
+            "description": "Reads compact Blueprint event information for the Active Target: reflected bindable UMG widget events plus bound events from the full EventGraph.",
+            "enabled": true,
+            "category": "Blueprint"
+        },
+        {
+            "name": "bluecode_search_nodes",
+            "description": "Searches context-valid Blueprint menu nodes and returns stable handles plus signatures/class paths for custom, plugin, macro, or ambiguous node creation. Results include is_exec and compact pin_counts by default, so callers can choose node(...) versus value(...) without dumping pins; use include_pins only when exact pin names are needed. The returned handle can be passed as action_handle, or the full search result object can be placed in bluecode_apply action_hints.",
+            "enabled": true,
+            "category": "Blueprint"
+        },
+        {
+            "name": "bluecode_apply",
+            "description": "Plans or atomically applies compressed Blueprint semantic patches. Default mode='union' uses LCS semantic alignment: matched statements are no-ops, unmatched statements insert before the next matched right anchor, and anchorless statements append at the current block end; omitted nodes are never deleted. Pass base_revision and source_map from detail='roundtrip' to prevent stale or misidentified edits, or dry_run=true to return a plan_hash without mutation. Any failed operation restores the pre-apply graph snapshot. Syntax supports FunctionName(Pin=value, ...), node(\"Action Menu Name\", Pin=value, ...), value(\"Action Menu Name\", Pin=value, ...), assignments, expressions, action hints, node properties, and aliases. Ambiguous mappings and connections fail rather than guess or replace existing edges.",
+            "enabled": true,
+            "category": "Blueprint"
+        },
+        {
+            "name": "bluecode_apply_variables",
+            "description": "Adds Blueprint member variables as a union-only write. Existing same-type variables are preserved; incompatible type replacement fails instead of silently deleting/replacing.",
+            "enabled": true,
+            "category": "Blueprint"
+        },
+        {
+            "name": "bluecode_connect",
+            "description": "Adds explicit Blueprint pin connections as a BlueCode escape hatch for complex custom, plugin, or macro nodes. Union-only: it creates missing links, treats existing links as success, and fails if UE would break or replace old links. Prefer semantic bluecode_apply inputs first; use connects=[{\"source\":\"NodeIdOrAlias:OutputPin\",\"target\":\"NodeIdOrAlias:InputPin\"}] or string entries like \"NodeA:Return Value -> NodeB:Condition\" when pins must be explicit. Pin names may be internal names, display names, or FriendlyName; omitted source/target pins resolve only when one matching data pin is available. Pass aliases returned by bluecode_apply to resolve temporary node aliases.",
+            "enabled": true,
+            "category": "Blueprint"
+        },
+        {
+            "name": "bluecode_delete",
+            "description": "Explicit Blueprint deletion command for nodes, variables, or existing pin connections. Requires confirm_delete=true and fails when a target name or node-pair connection is ambiguous. Connection targets can use kind=\"connection\" with {source,target} or a string like \"NodeA:Then -> NodeB:Execute\"; aliases returned by bluecode_apply can resolve NodeAlias:Pin endpoints.",
+            "enabled": true,
+            "category": "Blueprint"
+        },
+        {
+            "name": "bluecode_compile",
+            "description": "Compiles and saves the Active Target Blueprint. Provide a blueprint path/name only when compiling a non-target Blueprint.",
+            "enabled": true,
+            "category": "Blueprint"
+        },
+        {
+            "name": "add_step",
+            "description": "Compatibility node-level write command. Prefer bluecode_apply for default Blueprint work.",
+            "enabled": false,
+            "category": "Blueprint"
+        },
+        {
+            "name": "prepare_value",
+            "description": "Compatibility node-level data command. Prefer bluecode_apply for default Blueprint work.",
+            "enabled": false,
+            "category": "Blueprint"
+        },
+        {
+            "name": "connect_data_to_pin",
+            "description": "Compatibility pin-level escape hatch. Hidden by default because bluecode should avoid exposing raw pin wiring unless the semantic layer cannot express it.",
+            "enabled": false,
+            "category": "Blueprint"
+        },
+        {
+            "name": "add_variable",
+            "description": "Compatibility variable write command. Prefer bluecode_apply_variables.",
+            "enabled": false,
+            "category": "Blueprint"
+        },
+        {
+            "name": "get_variables",
+            "description": "Compatibility variable read command. Prefer bluecode_read_variables.",
+            "enabled": false,
+            "category": "Blueprint"
+        },
+        {
+            "name": "delete_variable",
+            "description": "Compatibility delete command retained in the backend. Hidden from default MCP until Blueprint deletion uses confirm_delete=true.",
+            "enabled": false,
+            "category": "Blueprint"
+        },
+        {
+            "name": "delete_node",
+            "description": "Compatibility delete command retained in the backend. Hidden from default MCP until Blueprint deletion uses confirm_delete=true.",
+            "enabled": false,
+            "category": "Blueprint"
+        },
+        {
+            "name": "get_function_nodes",
+            "description": "Compatibility node-level debug read. Prefer bluecode_read_function; use detail='debug' there when node IDs, pins, edges, or expansion evidence are needed.",
+            "enabled": false,
+            "category": "Blueprint"
+        },
+        {
+            "name": "set_edit_function",
+            "description": "Compatibility context command. Prefer bluecode_set_function.",
+            "enabled": false,
+            "category": "Blueprint"
+        },
+        {
+            "name": "set_cursor_node",
+            "description": "Compatibility cursor command for low-level node repair. Hidden from the default bluecode workflow.",
+            "enabled": false,
+            "category": "Blueprint"
+        },
+        {
+            "name": "search_function_library",
+            "description": "Searches for callable functions in the project library. like C++ provide function,class function ,subsystem.",
+            "enabled": true,
+            "category": "Blueprint"
+        },
+        {
+            "name": "material_set_target",
+            "description": "Legacy graph material target command retained for backend compatibility. Prefer hlsl_set_target.",
+            "enabled": false,
+            "category": "Material"
+        },
+        {
+            "name": "material_modify_type",
+            "description": "Compatibility alias. Prefer hlsl_set_target(..., domain/blend_mode/shading_model/two_sided) for material type changes.",
+            "enabled": false,
+            "category": "Material"
+        },
+        {
+            "name": "material_define_variable",
+            "description": "Legacy graph parameter command retained for backend compatibility. Prefer hlsl_set(parameters=...).",
+            "enabled": false,
+            "category": "Material"
+        },
+        {
+            "name": "material_add_node",
+            "description": "Legacy graph node command retained for backend compatibility. Prefer the HLSL text-edit workflow.",
+            "enabled": false,
+            "category": "Material"
+        },
+        {
+            "name": "material_delete",
+            "description": "Legacy graph delete command retained for backend compatibility. Prefer hlsl_delete for semantic HLSL parameters/outputs.",
+            "enabled": false,
+            "category": "Material"
+        },
+        {
+            "name": "material_connect_nodes",
+            "description": "Legacy graph wiring command retained for backend compatibility. Prefer the HLSL text-edit workflow.",
+            "enabled": false,
+            "category": "Material"
+        },
+        {
+            "name": "material_connect_pins",
+            "description": "Legacy graph wiring command retained for backend compatibility. Prefer the HLSL text-edit workflow.",
+            "enabled": false,
+            "category": "Material"
+        },
+        {
+            "name": "material_set_hlsl_node_io",
+            "description": "Legacy Custom-node graph command retained for backend compatibility. Prefer hlsl_set(hlsl=..., parameters=...).",
+            "enabled": false,
+            "category": "Material"
+        },
+        {
+            "name": "material_set_node_properties",
+            "description": "Legacy graph node-property command retained for backend compatibility. Prefer the HLSL text-edit workflow.",
+            "enabled": false,
+            "category": "Material"
+        },
+        {
+            "name": "material_get_pins",
+            "description": "Legacy graph introspection command retained for backend compatibility. Prefer hlsl_get semantic state.",
+            "enabled": false,
+            "category": "Material"
+        },
+        {
+            "name": "material_get_graph",
+            "description": "Legacy graph introspection command retained for backend compatibility. Prefer hlsl_get semantic state.",
+            "enabled": false,
+            "category": "Material"
+        },
+        {
+            "name": "hlsl_set_target",
+            "description": "Set/create/overwrite HLSL editing target. New targets default to UI material. Optional domain/blend_mode/shading_model/two_sided fields change material type during target setup.",
+            "enabled": true,
+            "category": "Material"
+        },
+        {
+            "name": "hlsl_get",
+            "description": "Read current HLSL code and structured parameter definitions from active HLSL target.",
+            "enabled": true,
+            "category": "Material"
+        },
+        {
+            "name": "hlsl_set",
+            "description": "Incrementally apply HLSL code, parameters, and/or outputs. Union-only: updates existing entries and appends missing ones; it never deletes. outputs can be strings like 'Roughness' or objects like {name,target,type}.",
+            "enabled": true,
+            "category": "Material"
+        },
+        {
+            "name": "hlsl_delete_parameter",
+            "description": "Compatibility alias. Prefer hlsl_delete(names, confirm_delete=true, kind='parameter').",
+            "enabled": false,
+            "category": "Material"
+        },
+        {
+            "name": "hlsl_delete_output",
+            "description": "Compatibility alias. Prefer hlsl_delete(names, confirm_delete=true, kind='output').",
+            "enabled": false,
+            "category": "Material"
+        },
+        {
+            "name": "hlsl_delete",
+            "description": "Explicitly delete HLSL parameters or outputs by semantic name. Requires confirm_delete=true. If name is ambiguous, retry with kind='parameter' or kind='output'.",
+            "enabled": true,
+            "category": "Material"
+        },
+        {
+            "name": "hlsl_compile",
+            "description": "Compile and save active HLSL target; return concise status/errors.",
+            "enabled": true,
+            "category": "Material"
+        }
+    ],
+    "prompts": [
+        {
+            "name": "Analyze UMG Structure",
+            "description": "Analyze the structure of the **Active Target** UMG.",
+            "content": "Please inspect the **Active Target** widget tree using `get_widget_tree`. Analyze for performance, depth, and organization. Summary the UI's purpose."
+        },
+        {
+            "name": "Generate Layout Code",
+            "description": "Generate Python code to recreate the **Active Target** UMG.",
+            "content": "Read the **Active Target** UMG state. Generate a Python script using `create_widget` and `set_widget_properties` to recreate this structure. Focus on the currently active assets."
+        }
+    ],
+    "Material Logic": [
+        {
+            "name": "Create Liquid Progress Material",
+            "prompt": "Create a liquid progress material for UMG. \n1. Set target material to '/Game/UI/Materials/M_LiquidProgress'.\n2. Add a Custom node with HLSL for sine-wave distortion.\n3. Add a Scalar parameter for 'Progress' (0-1).\n4. Connect logic and compile."
+        },
+        {
+            "name": "Add Glow Effect",
+            "prompt": "Apply a glow effect to the currently targeted material. \n1. Find the emissive output.\n2. Add a Multiply node and a Scalar 'GlowIntensity'.\n3. Insert it into the emissive chain."
+        }
+    ]
+}
