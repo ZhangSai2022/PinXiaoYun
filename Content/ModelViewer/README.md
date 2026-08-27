@@ -2,39 +2,6 @@
 
 `AModelViewerPawn` is a reusable orbit camera for product and equipment model pages.
 
-## Crosshair hover base
-
-`BP_ThirdPersonCharacter` now inherits `AModelViewerThirdPersonCharacterBase`.
-The base character creates a screen-center crosshair, traces from the active camera,
-and accepts only `UStaticMeshComponent` hits whose owner is a `ModelViewerDoorBase`
-Blueprint (or a child of it). The hit mesh receives Custom Depth highlight and its
-first non-empty Component Tag is shown beside the crosshair. When the hit component
-has no tag, its attachment parents and then the Actor Tags are checked. If none of
-them has a tag, the name stays hidden; mesh asset names are never used as fallback.
-
-The display widget is `/Game/UI/WBP_ModelViewerCrosshair`. It inherits
-`UModelViewerCrosshairWidget`, contains a `CanvasPanel` and a `TextBlock` named
-`ModelNameText`, and is assigned to `BP_ThirdPersonCharacter.CrosshairWidgetClass`.
-The C++ base binds that TextBlock and updates its text and visibility whenever the
-camera trace changes target.
-
-The base exposes `ModelTraceChannel`, `ModelTraceDistance`,
-`HoverHighlightStencilValue`, `bUseCustomDepthHighlight`, `HoverOverlayMaterial`,
-and `CrosshairWidgetClass`. Enable the project Custom Depth pass when using an
-outline material, and keep collision/query enabled on selectable door meshes.
-`OnModelViewerHoverChanged` and `BP_OnModelViewerHoverChanged` are available for
-additional Blueprint reactions.
-
-The crosshair and mouse use separate traces. The camera-center crosshair trace alone
-controls model focus, highlight, and the name UI. A second trace follows the visible
-mouse cursor only for interaction; it never changes focus or the displayed name.
-When the mouse is over the exact component currently focused by the crosshair, the
-cursor changes to `Hand`. Left click finds the first `WidgetComponent` attached below
-that component and fades its existing UserWidget in with an ease-out-back scale
-bounce. Clicking it again toggles the description off. `bUseHandCursorOnHover`,
-`bRequireClickedModelToBeFocused`, `bToggleDescriptionOnClick`, and the description
-animation durations are editable on the character Blueprint defaults.
-
 ## Setup
 
 1. Create a Blueprint child of `ModelViewerPawn` named `BP_ModelViewerPawn`.
