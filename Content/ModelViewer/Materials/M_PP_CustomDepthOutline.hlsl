@@ -1,6 +1,7 @@
 // M_PP_CustomDepthOutline - UE 5.8 Post Process Custom node body.
 // A primitive is outlined when it writes StencilValue to Custom Depth-Stencil.
 // Set StencilValue to 0 to match every primitive that writes Custom Depth.
+// The outline is white by default and its strength pulses with View.GameTime.
 float2 ColorUV = GetDefaultSceneTextureUV(Parameters, PPI_PostProcessInput0);
 float2 MaskUV = GetDefaultSceneTextureUV(Parameters, PPI_CustomStencil);
 float2 Texel = GetSceneTextureBufferSize(PPI_CustomStencil).zw;
@@ -71,8 +72,11 @@ float M7 = step(0.0001, D7) * step(D7, Z7 + DepthTolerance) * lerp(1.0, 1.0 - st
 float NeighborSelected = max(max(max(M0, M1), max(M2, M3)), max(max(M4, M5), max(M6, M7)));
 float Edge = saturate(NeighborSelected - CenterSelected);
 
-float3 FallbackColor = float3(0.05, 0.75, 1.0);
+float3 FallbackColor = float3(1.0, 1.0, 1.0);
 float3 Tint = (dot(OutlineColor.rgb, OutlineColor.rgb) > 0.0001) ? OutlineColor.rgb : FallbackColor;
-float Strength = saturate(OutlineIntensity);
+float BreathPhase = View.GameTime * max(BreathSpeed, 0.01) * 6.2831853;
+float Breath = 0.5 + 0.5 * sin(BreathPhase);
+float BreathStrength = lerp(0.35, 1.0, Breath);
+float Strength = saturate(OutlineIntensity) * BreathStrength;
 float3 Result = lerp(SceneColor.rgb, Tint, Edge * Strength);
 return float4(Result, SceneColor.a);
