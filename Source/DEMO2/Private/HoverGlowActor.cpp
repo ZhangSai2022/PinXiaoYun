@@ -54,6 +54,7 @@ void AHoverGlowActor::SetHoverGlowEnabled(bool bEnabled)
 		WidgetOwnerMesh.Reset();
 		GetWorldTimerManager().ClearTimer(HideWidgetsTimerHandle);
 		ApplyGlowToAll(false);
+		ApplyCustomDepthToAll(false);
 		SetAllChildWidgetsVisible(false);
 		if (bWasHovered)
 		{
@@ -111,6 +112,7 @@ void AHoverGlowActor::RefreshHoverMeshComponents()
 					this, &AHoverGlowActor::HandleWidgetEndCursorOver);
 			}
 		}
+		ApplyCustomDepth(MeshComponent, false);
 
 		MeshComponent->OnBeginCursorOver.AddUniqueDynamic(
 			this, &AHoverGlowActor::HandleBeginCursorOver);
@@ -140,10 +142,12 @@ void AHoverGlowActor::HandleBeginCursorOver(UPrimitiveComponent* TouchedComponen
 	if (bHighlightWholeActor)
 	{
 		ApplyGlowToAll(true);
+		ApplyCustomDepthToAll(true);
 	}
 	else
 	{
 		ApplyGlow(MeshComponent, true);
+		ApplyCustomDepth(MeshComponent, true);
 	}
 
 	if (!bWasHovered)
@@ -232,10 +236,12 @@ void AHoverGlowActor::HandleWidgetBeginCursorOver(UPrimitiveComponent* TouchedCo
 	if (bHighlightWholeActor)
 	{
 		ApplyGlowToAll(true);
+		ApplyCustomDepthToAll(true);
 	}
 	else
 	{
 		ApplyGlow(OwnerMesh, true);
+		ApplyCustomDepth(OwnerMesh, true);
 	}
 
 	if (!bWasHovered)
@@ -300,6 +306,27 @@ void AHoverGlowActor::ApplyGlowToAll(bool bGlow) const
 	for (const FHoverGlowMeshState& State : MeshStates)
 	{
 		ApplyGlow(State.MeshComponent.Get(), bGlow);
+	}
+}
+
+void AHoverGlowActor::ApplyCustomDepth(
+	UStaticMeshComponent* MeshComponent, bool bEnabled) const
+{
+	if (!IsValid(MeshComponent))
+	{
+		return;
+	}
+
+	MeshComponent->SetRenderCustomDepth(bUseCustomDepthOnHover && bEnabled);
+	MeshComponent->SetCustomDepthStencilValue(
+		FMath::Clamp(HoverCustomDepthStencilValue, 0, 255));
+}
+
+void AHoverGlowActor::ApplyCustomDepthToAll(bool bEnabled) const
+{
+	for (const FHoverGlowMeshState& State : MeshStates)
+	{
+		ApplyCustomDepth(State.MeshComponent.Get(), bEnabled);
 	}
 }
 
@@ -371,16 +398,37 @@ bool AHoverGlowActor::IsInteractionAreaHovered(UStaticMeshComponent* MeshCompone
 
 void AHoverGlowActor::HideChildWidgetsIfOutside()
 {
-	if (IsHovered())
+	const TWeakObjectPtr<UStaticMeshComponent> PreviousOwner = WidgetOwnerMesh;
+	if (PreviousOwner.IsValid() &&
+		!IsInteractionAreaHovered(PreviousOwner.Get()))
 	{
-		return;
+		SetChildWidgetsVisible(PreviousOwner.Get(), false);
+		WidgetOwnerMesh.Reset();
 	}
 
-	const TWeakObjectPtr<UStaticMeshComponent> PreviousOwner = WidgetOwnerMesh;
-	WidgetOwnerMesh.Reset();
-	SetAllChildWidgetsVisible(false);
-	ApplyGlowToAll(false);
-	NotifyHoverChanged(false, PreviousOwner.Get());
+	const bool bAnyInteractionAreaHovered = IsHovered();
+	if (bHighlightWholeActor)
+	{
+		ApplyGlowToAll(bAnyInteractionAreaHovered);
+		ApplyCustomDepthToAll(bAnyInteractionAreaHovered);
+	}
+	else
+	{
+		for (const FHoverGlowMeshState& State : MeshStates)
+		{
+			const bool bMeshHovered =
+				IsInteractionAreaHovered(State.MeshComponent.Get());
+			ApplyGlow(State.MeshComponent.Get(), bMeshHovered);
+			ApplyCustomDepth(State.MeshComponent.Get(), bMeshHovered);
+		}
+	}
+
+	if (!bAnyInteractionAreaHovered)
+	{
+		WidgetOwnerMesh.Reset();
+		SetAllChildWidgetsVisible(false);
+		NotifyHoverChanged(false, PreviousOwner.Get());
+	}
 }
 
 UStaticMeshComponent* AHoverGlowActor::FindOwnerMesh(UWidgetComponent* WidgetComponent) const
@@ -415,6 +463,7 @@ void AHoverGlowActor::RestoreAndUnbindMeshes()
 		}
 
 		ApplyGlow(MeshComponent, false);
+		ApplyCustomDepth(MeshComponent, false);
 		for (const FHoverGlowWidgetState& WidgetState : State.ChildWidgetComponents)
 		{
 			UWidgetComponent* WidgetComponent = WidgetState.WidgetComponent.Get();

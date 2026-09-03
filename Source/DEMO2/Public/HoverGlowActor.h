@@ -83,6 +83,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Behavior")
 	bool bHighlightWholeActor = true;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Behavior")
+	bool bUseCustomDepthOnHover = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Behavior", meta = (ClampMin = "0", ClampMax = "255"))
+	int32 HoverCustomDepthStencilValue = 1;
+
 	// Enables cursor-over tracing on player zero. The mesh must still block Visibility traces.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Behavior")
 	bool bAutoEnableMouseOverEvents = true;
@@ -144,6 +150,8 @@ private:
 
 	void ApplyGlow(UStaticMeshComponent* MeshComponent, bool bGlow) const;
 	void ApplyGlowToAll(bool bGlow) const;
+	void ApplyCustomDepth(UStaticMeshComponent* MeshComponent, bool bEnabled) const;
+	void ApplyCustomDepthToAll(bool bEnabled) const;
 	void SetChildWidgetsVisible(UStaticMeshComponent* MeshComponent, bool bVisible) const;
 	void SetAllChildWidgetsVisible(bool bVisible) const;
 	void RequestHideChildWidgets();
