@@ -1,35 +1,74 @@
 #include "HoverGlowActor.h"
 
 #include "Components/SceneComponent.h"
+#include "Components/SceneCaptureComponent2D.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "HAL/PlatformTime.h"
+#include "InputCoreTypes.h"
 #include "TimerManager.h"
 
 AHoverGlowActor::AHoverGlowActor()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 
 	Root = CreateDefaultSubobject<USceneComponent>(TEXT("HoverGlowRoot"));
 	SetRootComponent(Root);
+
+	MouseFollowSpringArm = CreateDefaultSubobject<USpringArmComponent>(
+		TEXT("MouseFollowSpringArm"));
+	MouseFollowSpringArm->SetupAttachment(Root);
+	MouseFollowSpringArm->TargetArmLength = MouseFollowArmLength;
+	MouseFollowSpringArm->bDoCollisionTest = false;
+	MouseFollowSpringArm->bUsePawnControlRotation = false;
+
+	MouseFollowSceneCapture = CreateDefaultSubobject<USceneCaptureComponent2D>(
+		TEXT("MouseFollowSceneCapture"));
+	MouseFollowSceneCapture->SetupAttachment(
+		MouseFollowSpringArm, USpringArmComponent::SocketName);
+	MouseFollowSceneCapture->bCaptureEveryFrame = true;
+	MouseFollowSceneCapture->bCaptureOnMovement = true;
 }
 
 void AHoverGlowActor::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (bAutoEnableMouseOverEvents)
+	if (APlayerController* PlayerController = GetWorld()->GetFirstPlayerController())
 	{
-		if (APlayerController* PlayerController = GetWorld()->GetFirstPlayerController())
+		if (bAutoEnableMouseOverEvents)
 		{
 			PlayerController->bEnableMouseOverEvents = true;
 			PlayerController->bEnableClickEvents = true;
 		}
+
+		if (bEnableMouseFollowCapture && bAutoShowMouseCursorForMouseFollow)
+		{
+			PlayerController->bShowMouseCursor = true;
+			FInputModeGameAndUI InputMode;
+			InputMode.SetHideCursorDuringCapture(false);
+			InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+			PlayerController->SetInputMode(InputMode);
+			bMouseFollowInputConfigured = true;
+		}
 	}
 
 	RefreshHoverMeshComponents();
+	const float MinimumArmLength = FMath::Max(MouseFollowMinArmLength, 0.0f);
+	const float MaximumArmLength = FMath::Max(MouseFollowMaxArmLength, MinimumArmLength);
+	DesiredMouseFollowArmLength = FMath::Clamp(
+		MouseFollowArmLength, MinimumArmLength, MaximumArmLength);
+	MouseFollowSpringArm->TargetArmLength = DesiredMouseFollowArmLength;
+	DesiredMouseFollowRotation = MouseFollowSpringArm->GetRelativeRotation();
+}
+
+void AHoverGlowActor::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	UpdateMouseFollowRotation(DeltaSeconds);
 }
 
 void AHoverGlowActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -213,6 +252,97 @@ void AHoverGlowActor::HandleMeshClicked(
 		LastClickButton = ButtonPressed;
 		LastClickTimeSeconds = CurrentTimeSeconds;
 	}
+}
+
+void AHoverGlowActor::UpdateMouseFollowRotation(float DeltaSeconds)
+{
+	if (!bEnableMouseFollowCapture || !IsValid(MouseFollowSpringArm))
+	{
+		return;
+	}
+
+	APlayerController* PlayerController = GetWorld()
+		? GetWorld()->GetFirstPlayerController()
+		: nullptr;
+	if (!IsValid(PlayerController))
+	{
+		return;
+	}
+	if (bAutoShowMouseCursorForMouseFollow &&
+		(!bMouseFollowInputConfigured || !PlayerController->bShowMouseCursor))
+	{
+		ConfigureMouseFollowInput();
+	}
+
+	if (PlayerController->IsInputKeyDown(EKeys::LeftMouseButton))
+	{
+		float MouseDeltaX = 0.0f;
+		float MouseDeltaY = 0.0f;
+		PlayerController->GetInputMouseDelta(MouseDeltaX, MouseDeltaY);
+		DesiredMouseFollowRotation.Yaw = FMath::Clamp(
+			DesiredMouseFollowRotation.Yaw + MouseDeltaX * MouseDragRotationSensitivity,
+			-MouseFollowMaxYaw,
+			MouseFollowMaxYaw);
+		DesiredMouseFollowRotation.Pitch = FMath::Clamp(
+			DesiredMouseFollowRotation.Pitch - MouseDeltaY * MouseDragRotationSensitivity,
+			-MouseFollowMaxPitch,
+			MouseFollowMaxPitch);
+	}
+
+	const float MouseWheelDelta =
+		PlayerController->GetInputAnalogKeyState(EKeys::MouseWheelAxis);
+	if (!FMath::IsNearlyZero(MouseWheelDelta))
+	{
+		const float MinimumArmLength = FMath::Max(MouseFollowMinArmLength, 0.0f);
+		const float MaximumArmLength = FMath::Max(
+			MouseFollowMaxArmLength, MinimumArmLength);
+		DesiredMouseFollowArmLength = FMath::Clamp(
+			DesiredMouseFollowArmLength - MouseWheelDelta * MouseWheelZoomStep,
+			MinimumArmLength,
+			MaximumArmLength);
+	}
+
+	const float SafeDeltaSeconds = FMath::Clamp(DeltaSeconds, 0.0f, 0.1f);
+	const FRotator CurrentRotation = MouseFollowSpringArm->GetRelativeRotation();
+	const float Alpha = MouseFollowRotationInterpSpeed > 0.0f
+		? 1.0f - FMath::Exp(-MouseFollowRotationInterpSpeed * SafeDeltaSeconds)
+		: 1.0f;
+	const FRotator NewRotation(
+		FMath::Lerp(CurrentRotation.Pitch, DesiredMouseFollowRotation.Pitch, Alpha),
+		FMath::Lerp(CurrentRotation.Yaw, DesiredMouseFollowRotation.Yaw, Alpha),
+		0.0f);
+	MouseFollowSpringArm->SetRelativeRotation(NewRotation);
+
+	MouseFollowSpringArm->TargetArmLength = MouseFollowZoomInterpSpeed > 0.0f
+		? FMath::FInterpTo(
+			MouseFollowSpringArm->TargetArmLength,
+			DesiredMouseFollowArmLength,
+			SafeDeltaSeconds,
+			MouseFollowZoomInterpSpeed)
+		: DesiredMouseFollowArmLength;
+}
+
+void AHoverGlowActor::ConfigureMouseFollowInput()
+{
+	if (!bEnableMouseFollowCapture || !bAutoShowMouseCursorForMouseFollow)
+	{
+		return;
+	}
+
+	APlayerController* PlayerController = GetWorld()
+		? GetWorld()->GetFirstPlayerController()
+		: nullptr;
+	if (!IsValid(PlayerController))
+	{
+		return;
+	}
+
+	PlayerController->bShowMouseCursor = true;
+	FInputModeGameAndUI InputMode;
+	InputMode.SetHideCursorDuringCapture(false);
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	PlayerController->SetInputMode(InputMode);
+	bMouseFollowInputConfigured = true;
 }
 
 void AHoverGlowActor::HandleWidgetBeginCursorOver(UPrimitiveComponent* TouchedComponent)

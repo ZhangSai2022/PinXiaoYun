@@ -8,7 +8,9 @@
 
 class UMaterialInterface;
 class UPrimitiveComponent;
+class USceneCaptureComponent2D;
 class USceneComponent;
+class USpringArmComponent;
 class UStaticMeshComponent;
 class UWidgetComponent;
 
@@ -57,6 +59,46 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Hover Glow")
 	TObjectPtr<USceneComponent> Root;
+
+	// Optional preview/capture rig: Root -> SpringArm -> SceneCapture2D.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Hover Glow|Mouse Capture")
+	TObjectPtr<USpringArmComponent> MouseFollowSpringArm;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Hover Glow|Mouse Capture")
+	TObjectPtr<USceneCaptureComponent2D> MouseFollowSceneCapture;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture")
+	bool bEnableMouseFollowCapture = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture")
+	bool bAutoShowMouseCursorForMouseFollow = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture", meta = (ClampMin = "0.0"))
+	float MouseFollowArmLength = 500.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture")
+	float MouseFollowMaxYaw = 25.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture")
+	float MouseFollowMaxPitch = 20.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture", meta = (ClampMin = "0.0"))
+	float MouseFollowRotationInterpSpeed = 8.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture", meta = (ClampMin = "0.001"))
+	float MouseDragRotationSensitivity = 0.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture", meta = (ClampMin = "0.0"))
+	float MouseFollowMinArmLength = 100.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture", meta = (ClampMin = "0.0"))
+	float MouseFollowMaxArmLength = 2000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture", meta = (ClampMin = "0.0"))
+	float MouseWheelZoomStep = 100.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture", meta = (ClampMin = "0.0"))
+	float MouseFollowZoomInterpSpeed = 10.0f;
 
 	// The material should multiply this scalar into its Emissive Color output.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Material")
@@ -130,6 +172,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
@@ -160,6 +203,8 @@ private:
 	bool IsInteractionAreaHovered(UStaticMeshComponent* MeshComponent) const;
 	void RestoreAndUnbindMeshes();
 	void NotifyHoverChanged(bool bIsHovered, UStaticMeshComponent* SourceComponent);
+	void ConfigureMouseFollowInput();
+	void UpdateMouseFollowRotation(float DeltaSeconds);
 
 	UPROPERTY(Transient)
 	TArray<FHoverGlowMeshState> MeshStates;
@@ -172,4 +217,7 @@ private:
 	double LastClickTimeSeconds = -1.0;
 	FTimerHandle HideWidgetsTimerHandle;
 	bool bHoverGlowEnabled = true;
+	bool bMouseFollowInputConfigured = false;
+	FRotator DesiredMouseFollowRotation = FRotator::ZeroRotator;
+	float DesiredMouseFollowArmLength = 500.0f;
 };
