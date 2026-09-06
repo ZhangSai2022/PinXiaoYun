@@ -73,7 +73,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture")
 	bool bAutoShowMouseCursorForMouseFollow = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture", meta = (ClampMin = "0.0"))
+	// Native fallback only; set Target Arm Length directly on MouseFollowSpringArm in the child Blueprint.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hover Glow|Mouse Capture", meta = (ClampMin = "0.0"))
 	float MouseFollowArmLength = 500.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hover Glow|Mouse Capture")

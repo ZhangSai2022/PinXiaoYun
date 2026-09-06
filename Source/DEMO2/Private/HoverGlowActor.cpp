@@ -60,7 +60,7 @@ void AHoverGlowActor::BeginPlay()
 	const float MinimumArmLength = FMath::Max(MouseFollowMinArmLength, 0.0f);
 	const float MaximumArmLength = FMath::Max(MouseFollowMaxArmLength, MinimumArmLength);
 	DesiredMouseFollowArmLength = FMath::Clamp(
-		MouseFollowArmLength, MinimumArmLength, MaximumArmLength);
+		MouseFollowSpringArm->TargetArmLength, MinimumArmLength, MaximumArmLength);
 	MouseFollowSpringArm->TargetArmLength = DesiredMouseFollowArmLength;
 	DesiredMouseFollowRotation = MouseFollowSpringArm->GetRelativeRotation();
 }
